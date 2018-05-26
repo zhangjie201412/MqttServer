@@ -7,7 +7,7 @@ LINK=g++ $(LDFLAGS) -o
 SRCDIR=./src
 OBJDIR=./obj
 #OBJ=$(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(wildcard $(SRCDIR)/*.cpp))
-OBJ=$(OBJDIR)/main.o $(OBJDIR)/thread.o $(OBJDIR)/mqtt_server.o $(OBJDIR)/client.o
+OBJ=$(OBJDIR)/main.o $(OBJDIR)/common.o $(OBJDIR)/thread.o $(OBJDIR)/mqtt_server.o $(OBJDIR)/client.o
 BINDIR=./bin
 BIN=$(BINDIR)/mqtt_server
 

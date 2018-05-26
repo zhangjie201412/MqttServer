@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <sys/epoll.h>
 #include <errno.h>
+#include "common.h"
 
 using namespace std;
 
@@ -39,7 +40,6 @@ void *MqttServer::wdgThreadProc(void *args)
     while(true) {
         usleep(10 * 1000000);
         for(size_t i = 0; i < clients.size(); i++) {
-            char x;
             Client *client = &MqttServer::clients[i];
             int fd = client->fd[0];
             write(fd, "X", 1);
@@ -75,6 +75,8 @@ void MqttServer::acceptAndDispatch()
                 continue;
             }
             client->setId(this->index);
+            memset(client->buffer, 0x00, CLIENT_BUFFER_SIZE);
+            client->offset = 0;
             this->index ++;
             Thread::unlockMutex();
             thread->create((void *)MqttServer::handleClient, client);
@@ -85,7 +87,6 @@ void MqttServer::acceptAndDispatch()
 void *MqttServer::handleClient(void *args)
 {
     Client *client = (Client *)args;
-    char buffer[256];
     int n;
     int index;
     int efd;
@@ -142,8 +143,8 @@ void *MqttServer::handleClient(void *args)
                 Thread::unlockMutex();
                 break;
             } else if(client->sock == events[i].data.fd) {
-                memset(buffer, 0x00, sizeof(buffer));
-                n = recv(client->sock, buffer, 256, 0);
+                n = read(client->sock, client->buffer + client->offset,
+                        CLIENT_BUFFER_SIZE);
                 if(n == 0) {
                     cout << "Client " << client->name << " disconnected" << endl;
                     close(client->sock);
@@ -156,11 +157,24 @@ void *MqttServer::handleClient(void *args)
                     }
                     Thread::unlockMutex();
                     break;
-                } else if(n < 0) {
-                    cerr << "Error while receiving message from client: " << client->name << endl;
+                } else if(n < 0 && errno == EAGAIN) {
+                    cerr << "Error while receiving message from client: " <<
+                        client->name << ": " << strerror(errno) << endl;
                 } else {
-                    //handle the recv message
-                    cout << "Recv " << n << " bytes: " << buffer << endl;
+                    client->offset += n;
+                    if(client->buffer[client->offset - 1] == '\n') {
+                        //handle the recv message
+                        cout << "Recv " << n << " bytes: " << client->buffer << endl;
+#ifdef DEBUG_DUMP_RAW
+                        for(unsigned int i = 0; i < client->offset; i++) {
+                            printf("%02x ", client->buffer[i]);
+                        }
+                        cout << endl;
+#endif
+                        client->process();
+                        memset(client->buffer, 0x00, CLIENT_BUFFER_SIZE);
+                        client->offset = 0;
+                    }
                 }
             } else if(client->fd[1] == events[i].data.fd) {
                 char x;
